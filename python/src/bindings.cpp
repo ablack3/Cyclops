@@ -13,6 +13,8 @@
 #include <pybind11/numpy.h>
 #include <pybind11/stl.h>
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -278,8 +280,10 @@ PYBIND11_MODULE(_cyclops, m) {
         .def("fisher_information",
              [](const Model& self, const std::vector<std::int64_t>& ids) {
                  const auto flat = self.fisher_information(ids);
+                 // Square by construction; derive the side from the payload
+                 // rather than from `ids`, which is empty for "all covariates".
                  const auto n = static_cast<py::ssize_t>(
-                     ids.empty() ? self.coefficients().size() : ids.size());
+                     std::llround(std::sqrt(static_cast<double>(flat.size()))));
                  auto array = toArray(flat);
                  array.resize({n, n});
                  return array;

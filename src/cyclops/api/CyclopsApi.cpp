@@ -670,7 +670,7 @@ void Model::Impl::applyInterceptWarmStart() {
     }
 
     const std::size_t offset = betaOffset();
-    std::vector<double> beta(raw().getNumberOfCovariates() + offset, 0.0);
+    std::vector<double> beta(raw().getNumberOfCovariates(), 0.0);
     if (offset == 1) beta[0] = 1.0;   // offset coefficient is fixed at 1
     beta[offset] = intercept;
 
@@ -765,12 +765,19 @@ void Model::set_censor_weights(const std::vector<double>& weights) {
 }
 
 void Model::set_start_values(const std::vector<double>& beta) {
-    if (beta.size() != impl_->raw().getNumberOfCovariates()) {
-        throw CyclopsError("Must provide a starting value for each coefficient");
+    // Sized like coefficients() and FitResult: the offset column is never the
+    // caller's to set, since its coefficient is fixed at 1.
+    const std::size_t expected =
+        impl_->raw().getNumberOfCovariates() - impl_->betaOffset();
+    if (beta.size() != expected) {
+        std::ostringstream stream;
+        stream << "Must provide a starting value for each estimated coefficient ("
+               << expected << " expected, " << beta.size() << " given)";
+        throw CyclopsError(stream.str());
     }
     std::vector<double> full;
-    full.reserve(beta.size() + 1);
-    if (impl_->raw().getHasOffsetCovariate()) full.push_back(1.0);
+    full.reserve(beta.size() + impl_->betaOffset());
+    if (impl_->betaOffset() == 1) full.push_back(1.0);
     full.insert(full.end(), beta.begin(), beta.end());
 
     impl_->ccd().setBeta(full);
@@ -779,8 +786,13 @@ void Model::set_start_values(const std::vector<double>& beta) {
 }
 
 void Model::set_fixed(const std::vector<bool>& fixed) {
-    if (fixed.size() != impl_->raw().getNumberOfCovariates()) {
-        throw CyclopsError("Must provide a flag for each coefficient");
+    const std::size_t expected =
+        impl_->raw().getNumberOfCovariates() - impl_->betaOffset();
+    if (fixed.size() != expected) {
+        std::ostringstream stream;
+        stream << "Must provide a flag for each estimated coefficient ("
+               << expected << " expected, " << fixed.size() << " given)";
+        throw CyclopsError(stream.str());
     }
     const auto offset = static_cast<int>(impl_->betaOffset());
     for (std::size_t i = 0; i < fixed.size(); ++i) {

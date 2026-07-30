@@ -318,12 +318,13 @@ public:
     /// Fine-Gray subject-specific censoring weights; each in [0, 1].
     void set_censor_weights(const std::vector<double>& weights);
 
-    /// Starting coefficients, length = number of covariates (excluding any
-    /// offset column). When not called, `fit()` applies the same intercept
-    /// warm start as `fitCyclopsModel()`.
+    /// Starting coefficients, one per *estimated* coefficient — that is, one per
+    /// covariate excluding any offset column, matching `coefficients()`. When
+    /// not called, `fit()` applies the same intercept warm start as
+    /// `fitCyclopsModel()`.
     void set_start_values(const std::vector<double>& beta);
 
-    /// Hold coefficients fixed at their starting value.
+    /// Hold coefficients at their starting value. Sized as `set_start_values`.
     void set_fixed(const std::vector<bool>& fixed);
 
     // -- fitting ------------------------------------------------------------

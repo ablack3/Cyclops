@@ -143,6 +143,25 @@ def test_fixed_coefficients_stay_at_their_start(small):
     assert result.coefficients[2] == pytest.approx(0.75)
 
 
+def test_start_values_and_fixed_are_sized_by_estimated_coefficients(small):
+    """Both exclude the offset column, matching `coefficients()`."""
+    data = CyclopsData.from_arrays(
+        small.X, small.counts, "pr", offset=small.offset, add_intercept=True
+    )
+    model = CyclopsModel(data)
+    estimated = data.n_covariates - 1  # the offset is not estimated
+    assert estimated == small.n_features + 1
+
+    model.set_start_values(np.zeros(estimated))
+    model.set_fixed([False] * estimated)
+    assert model.fit().coefficients.shape == (estimated,)
+
+    with pytest.raises(CyclopsError, match="each estimated coefficient"):
+        model.set_start_values(np.zeros(data.n_covariates))
+    with pytest.raises(CyclopsError, match="each estimated coefficient"):
+        model.set_fixed([False] * data.n_covariates)
+
+
 def test_weights_length_is_validated(small):
     _, model = _logistic(small)
     with pytest.raises(CyclopsError, match="weight for each data row"):

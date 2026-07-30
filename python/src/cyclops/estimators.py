@@ -151,6 +151,22 @@ class BaseCyclopsEstimator:
         self._validate_outcome(y)
 
         fit_intercept = self._resolve_fit_intercept()
+
+        # Resolve the feature ids here rather than reading them back off the
+        # stored columns: those also carry the intercept (id 0) and any promoted
+        # offset (id -1), so `exclude` and `standard_errors` would silently
+        # address the wrong column.
+        n_features = 1 if np.ndim(X) == 1 else X.shape[1]
+        if covariate_ids is None:
+            feature_ids = np.arange(1, n_features + 1, dtype=np.int64)
+        else:
+            feature_ids = np.ascontiguousarray(covariate_ids, dtype=np.int64)
+            if feature_ids.shape != (n_features,):
+                raise ValueError(
+                    f"covariate_ids must have {n_features} elements, "
+                    f"got {feature_ids.shape[0]}"
+                )
+
         data = CyclopsData.from_arrays(
             X,
             y,
@@ -158,24 +174,17 @@ class BaseCyclopsEstimator:
             time=time,
             strata=strata,
             offset=offset,
-            covariate_ids=covariate_ids,
+            covariate_ids=feature_ids,
             add_intercept=fit_intercept,
             silent=not self.verbose,
         )
 
-        # n_covariates counts every stored column, including the intercept and
-        # any promoted offset; neither is a feature of X.
-        n_features = (
-            data.n_covariates
-            - (1 if fit_intercept else 0)
-            - (1 if data.has_offset else 0)
-        )
         self.n_features_in_ = n_features
         self.fit_intercept_ = fit_intercept
 
         model = CyclopsModel(
             data,
-            prior=self._build_prior(data, n_features, covariate_ids),
+            prior=self._build_prior(feature_ids),
             control=self._build_control(),
         )
 
@@ -255,13 +264,18 @@ class BaseCyclopsEstimator:
         return eta
 
     def standard_errors(self) -> np.ndarray:
-        """Asymptotic standard errors for all coefficients, intercept included.
+        """Asymptotic standard errors, aligned with ``[intercept_, *coef_]``.
 
         Valid only for an unregularized fit; a penalized fit's information matrix
         does not describe the sampling distribution of the estimator.
         """
         self._check_fitted()
-        return self._model.standard_errors()
+        # Name the columns explicitly: passing no ids would include the offset
+        # column, whose coefficient is fixed and has no standard error.
+        ids = list(self.covariate_ids_)
+        if self.fit_intercept_:
+            ids.insert(0, INTERCEPT_ID)
+        return self._model.standard_errors(ids)
 
     def confidence_intervals(self, columns: Sequence[int] | None = None, **kwargs):
         """Likelihood-profile confidence intervals for the given columns of ``X``."""
@@ -301,16 +315,10 @@ class BaseCyclopsEstimator:
             )
         return bool(self.fit_intercept)
 
-    def _build_prior(
-        self,
-        data: CyclopsData,
-        n_features: int,
-        covariate_ids: Sequence[int] | None,
-    ) -> Prior:
+    def _build_prior(self, feature_ids: np.ndarray) -> Prior:
         exclude_ids: list[int] = []
         if self.exclude is not None:
-            ids = np.asarray(data.covariate_ids)
-            feature_ids = ids[ids != INTERCEPT_ID] if data.has_intercept else ids
+            n_features = feature_ids.shape[0]
             for column in self.exclude:
                 index = int(column)
                 if not 0 <= index < n_features:

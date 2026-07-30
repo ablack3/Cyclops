@@ -121,6 +121,70 @@ def test_poisson_predict_agrees_with_engine(small):
     )
 
 
+# ---------------------------------------------------------------------------
+# The offset column
+#
+# A promoted offset occupies stored column 0 with covariate id -1, and its
+# coefficient is fixed at 1. It is therefore neither a feature of X nor an
+# estimated coefficient, and every user-facing length and index has to account
+# for that. These tests pin each place where it previously did not.
+# ---------------------------------------------------------------------------
+
+
+def test_offset_is_excluded_from_feature_count(small):
+    model = PoissonRegression().fit(small.X, small.counts, offset=small.offset)
+    assert model.n_features_in_ == small.n_features
+    assert model.coef_.shape == (small.n_features,)
+    assert model.covariate_ids_.shape == (small.n_features,)
+    assert -1 not in model.covariate_ids_
+    # The stored design does carry it, plus the intercept.
+    assert model.data_.n_covariates == small.n_features + 2
+
+
+def test_offset_is_excluded_from_standard_errors(small):
+    model = PoissonRegression().fit(small.X, small.counts, offset=small.offset)
+    errors = model.standard_errors()
+    assert errors.shape == (small.n_features + 1,)  # intercept + features
+    assert np.all(errors > 0)
+
+
+def test_start_values_with_an_offset(small):
+    """`start_values` is sized by feature count, not by stored column count."""
+    model = PoissonRegression().fit(
+        small.X, small.counts, offset=small.offset, start_values=np.zeros(small.n_features)
+    )
+    reference = PoissonRegression().fit(small.X, small.counts, offset=small.offset)
+    np.testing.assert_allclose(model.coef_, reference.coef_, rtol=1e-4, atol=1e-6)
+
+
+def test_exclude_addresses_features_not_the_offset(small):
+    """`exclude=[0]` must unpenalize feature 0, not the already-fixed offset."""
+    model = PoissonRegression(
+        prior="laplace", prior_variance=1e-5, exclude=[0]
+    ).fit(small.X, small.counts, offset=small.offset)
+
+    # is_regularized() skips the offset: [intercept, feature 0, feature 1, ...]
+    regularized = model.model_.is_regularized()
+    assert len(regularized) == small.n_features + 1
+    assert not regularized[0]                  # intercept, excluded by default
+    assert not regularized[1]                  # feature 0, excluded explicitly
+    assert all(regularized[2:])                # the rest are penalized
+
+    # ...and the same fit without the exclusion shrinks feature 0 strictly more,
+    # which is the numerically observable consequence.
+    penalized = PoissonRegression(prior="laplace", prior_variance=1e-5).fit(
+        small.X, small.counts, offset=small.offset
+    )
+    assert abs(model.coef_[0]) > abs(penalized.coef_[0])
+
+
+def test_fisher_information_is_square_with_an_offset(small):
+    model = PoissonRegression().fit(small.X, small.counts, offset=small.offset)
+    information = model.model_.fisher_information()
+    assert information.shape[0] == information.shape[1]
+    np.testing.assert_allclose(information, information.T, rtol=1e-10)
+
+
 def test_cox_predict_is_the_linear_predictor(small):
     model = CoxRegression().fit(small.X, small.y, time=small.time)
     np.testing.assert_allclose(
