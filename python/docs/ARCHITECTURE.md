@@ -414,9 +414,13 @@ class Model {                           // opaque; owns the CCD + kernels
   std::vector<double> linear_predictor();
   double log_likelihood();
   std::vector<double> gradient();
-  std::vector<double> hessian_diagonal(const std::vector<int64_t>& ids);
-  std::vector<double> standard_errors(const std::vector<int64_t>& ids);
-  ProfileResult profile(...);           // likelihood profile CIs
+  std::vector<double> hessian_diagonal(const std::vector<int64_t>& ids) const;
+  std::vector<double> standard_errors(const std::vector<int64_t>& ids) const;
+  std::vector<double> fisher_information(const std::vector<int64_t>& ids) const;
+  std::vector<bool> is_regularized() const;
+  std::vector<ProfileInterval> profile(ids, threads, threshold, include_penalty);
+  ProfileCurve profile_curve(id, points, threads, include_penalty, derivatives);
+  std::vector<std::string> take_log();
 };
 
 }  // namespace cyclops::api
