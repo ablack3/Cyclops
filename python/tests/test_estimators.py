@@ -77,6 +77,40 @@ def test_repr_lists_parameters():
 
 
 # ---------------------------------------------------------------------------
+# Input coercion
+# ---------------------------------------------------------------------------
+
+
+def test_fit_accepts_plain_array_likes(small):
+    """A list of lists must work, as it does for any scikit-learn estimator.
+
+    The feature count is needed before the data are built, and a list has no
+    `.shape` — so X has to be coerced first.
+    """
+    reference = LogisticRegression().fit(small.X, small.y)
+    from_lists = LogisticRegression().fit(small.X.tolist(), small.y.tolist())
+
+    assert from_lists.n_features_in_ == small.n_features
+    np.testing.assert_allclose(from_lists.coef_, reference.coef_, rtol=1e-12)
+    np.testing.assert_array_equal(
+        from_lists.predict(small.X.tolist()), reference.predict(small.X)
+    )
+
+
+def test_fit_accepts_a_single_column_as_1d(small):
+    column = small.X[:, 0]
+    one_d = LogisticRegression().fit(column.tolist(), small.y)
+    two_d = LogisticRegression().fit(column.reshape(-1, 1), small.y)
+    assert one_d.n_features_in_ == 1
+    np.testing.assert_allclose(one_d.coef_, two_d.coef_, rtol=1e-12)
+
+
+def test_fit_rejects_higher_dimensional_input(small):
+    with pytest.raises(ValueError, match="two-dimensional"):
+        LogisticRegression().fit(np.zeros((small.n_samples, 2, 2)), small.y)
+
+
+# ---------------------------------------------------------------------------
 # Prediction
 # ---------------------------------------------------------------------------
 
@@ -505,6 +539,101 @@ def test_sparse_formats_agree(small, fmt):
         sp.csc_matrix(small.X).asformat(fmt), small.y
     )
     np.testing.assert_allclose(dense.coef_, sparse.coef_, rtol=1e-9, atol=1e-11)
+
+
+@pytest.mark.parametrize(
+    "estimator,extra",
+    [
+        (ConditionalLogisticRegression, {"strata": "strata"}),
+        (CoxRegression, {"time": "time"}),
+    ],
+)
+def test_sparse_input_survives_row_reordering(small, estimator, extra):
+    """Sparse design *and* a row permutation — the combination OHDSI hits.
+
+    Reordering a CSC matrix by rows can change its internal format and index
+    ordering, so this checks the sparse path lands on the same fit as the dense
+    one rather than trusting that it does.
+    """
+    resolved = {key: getattr(small, value) for key, value in extra.items()}
+    shuffle = np.random.default_rng(21).permutation(small.n_samples)
+    shuffled = {key: value[shuffle] for key, value in resolved.items()}
+
+    sparse = estimator().fit(
+        sp.csc_matrix(small.X)[shuffle], small.y[shuffle], **shuffled
+    )
+    dense = estimator().fit(small.X[shuffle], small.y[shuffle], **shuffled)
+    sorted_dense = estimator().fit(small.X, small.y, **resolved)
+
+    np.testing.assert_allclose(sparse.coef_, dense.coef_, rtol=1e-12, atol=1e-14)
+    np.testing.assert_allclose(sparse.coef_, sorted_dense.coef_, rtol=1e-9, atol=1e-11)
+
+
+def test_censor_weights_survive_row_reordering(small):
+    """Fine-Gray weights are per-row, so they must be permuted with the rows."""
+    weights = np.clip(np.linspace(0.15, 1.0, small.n_samples), 0.0, 1.0)
+    shuffle = np.random.default_rng(22).permutation(small.n_samples)
+
+    sorted_fit = FineGrayRegression().fit(
+        small.X, small.y, time=small.time, censor_weights=weights
+    )
+    shuffled_fit = FineGrayRegression().fit(
+        small.X[shuffle],
+        small.y[shuffle],
+        time=small.time[shuffle],
+        censor_weights=weights[shuffle],
+    )
+    np.testing.assert_allclose(
+        shuffled_fit.coef_, sorted_fit.coef_, rtol=1e-10, atol=1e-12
+    )
+
+
+def test_sample_weights_survive_row_reordering(small):
+    weights = np.random.default_rng(23).integers(0, 3, small.n_samples).astype(float)
+    shuffle = np.random.default_rng(24).permutation(small.n_samples)
+
+    sorted_fit = ConditionalLogisticRegression().fit(
+        small.X, small.y, strata=small.strata, sample_weight=weights
+    )
+    shuffled_fit = ConditionalLogisticRegression().fit(
+        small.X[shuffle],
+        small.y[shuffle],
+        strata=small.strata[shuffle],
+        sample_weight=weights[shuffle],
+    )
+    np.testing.assert_allclose(
+        shuffled_fit.coef_, sorted_fit.coef_, rtol=1e-9, atol=1e-11
+    )
+
+
+@pytest.mark.parametrize(
+    "estimator,extra,expected",
+    [
+        (LinearRegression, {}, "linear predictor"),
+        (ConditionalPoissonRegression, {"strata": "strata"}, "linear predictor"),
+        (SelfControlledCaseSeries, {"strata": "strata"}, "linear predictor"),
+    ],
+)
+def test_predict_returns_the_linear_predictor(small, estimator, extra, expected):
+    """The models with no baseline rate report eta, not a fitted mean."""
+    resolved = {key: getattr(small, value) for key, value in extra.items()}
+    if estimator is SelfControlledCaseSeries:
+        resolved["offset"] = small.offset
+    outcome = small.continuous if estimator is LinearRegression else small.counts
+
+    model = estimator().fit(small.X, outcome, **resolved)
+    np.testing.assert_allclose(
+        model.predict(small.X),
+        small.X @ model.coef_ + model.intercept_,
+        rtol=1e-12,
+    )
+
+
+def test_predict_log_proba(small):
+    model = LogisticRegression().fit(small.X, small.y)
+    np.testing.assert_allclose(
+        model.predict_log_proba(small.X), np.log(model.predict_proba(small.X))
+    )
 
 
 def test_wide_sparse_design_recovers_signal(sparse_binary):

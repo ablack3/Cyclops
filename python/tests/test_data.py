@@ -261,6 +261,57 @@ def test_column_sum_and_sum_by_stratum(small):
     assert per_stratum.sum() == pytest.approx(column.sum())
 
 
+def test_make_dense_converts_named_columns(small):
+    """`make_dense` addresses columns by covariate id, not by position."""
+    sparse = np.zeros((small.n_samples, 3))
+    sparse[::4, :] = 2.5
+
+    data = CyclopsData.create("lr")
+    data.set_outcome(small.y)
+    data.add_covariates(sp.csc_matrix(sparse), covariate_ids=[10, 20, 30])
+    assert data.covariate_formats == ["sparse"] * 3
+
+    data.make_dense([20])
+    assert data.covariate_formats == ["sparse", "dense", "sparse"]
+
+
+def test_incremental_ids_continue_numbering(small):
+    """Auto-assigned ids pick up after the columns already loaded."""
+    data = CyclopsData.create("lr")
+    data.set_outcome(small.y)
+    data.add_covariates(small.X[:, :2])
+    data.add_covariates(small.X[:, 2:])
+    np.testing.assert_array_equal(
+        data.covariate_ids, np.arange(1, small.n_features + 1)
+    )
+
+
+def test_aux_vector_length_is_validated(small):
+    with pytest.raises(ValueError, match="one element per row"):
+        CyclopsData.from_arrays(
+            small.X, small.y, "cox", time=small.time[:-1]
+        )
+
+
+def test_covariate_id_count_is_validated(small):
+    with pytest.raises(ValueError, match="covariate_ids must have"):
+        CyclopsData.from_arrays(small.X, small.y, "lr", covariate_ids=[1, 2])
+
+
+def test_enum_members_pass_through_resolve():
+    """The string layer is a convenience, not a requirement."""
+    from cyclops import _cyclops
+    from cyclops._enums import MODEL_KINDS, resolve
+
+    assert resolve(MODEL_KINDS, "lr", "model type") is _cyclops.ModelKind.LOGISTIC
+    assert (
+        resolve(MODEL_KINDS, _cyclops.ModelKind.COX, "model type")
+        is _cyclops.ModelKind.COX
+    )
+    with pytest.raises(TypeError, match="Invalid model type"):
+        resolve(MODEL_KINDS, 42, "model type")
+
+
 def test_normalize_returns_divisors(small):
     data = CyclopsData.create("lr")
     data.set_outcome(small.y)

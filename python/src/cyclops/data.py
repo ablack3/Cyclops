@@ -22,7 +22,7 @@ import scipy.sparse as sp
 from cyclops import _cyclops
 from cyclops._enums import MODEL_KINDS, NORMALIZATION_KINDS, PRECISIONS, resolve
 
-__all__ = ["CyclopsData", "INTERCEPT_ID"]
+__all__ = ["CyclopsData", "INTERCEPT_ID", "as_matrix"]
 
 #: Covariate id Cyclops assigns to the intercept column.
 INTERCEPT_ID = 0
@@ -58,6 +58,26 @@ def _as_1d(values, name: str, dtype=np.float64) -> np.ndarray:
     if array.ndim != 1:
         raise ValueError(f"{name} must be one-dimensional, got shape {array.shape}")
     return array
+
+
+def as_matrix(X):
+    """Coerce ``X`` to a 2-D NumPy array or a SciPy sparse matrix.
+
+    Sparse input passes through untouched (converted to CSC only at load time),
+    dense array-likes — lists included — become ndarrays, and a 1-D input is
+    treated as a single column.
+
+    Callers that need ``X.shape`` before handing it on must go through here
+    first: an array-like such as a list of lists has no ``.shape``.
+    """
+    if sp.issparse(X):
+        return X
+    matrix = np.asarray(X)
+    if matrix.ndim == 1:
+        matrix = matrix.reshape(-1, 1)
+    if matrix.ndim != 2:
+        raise ValueError(f"X must be two-dimensional, got shape {matrix.shape}")
+    return matrix
 
 
 def _row_order(model_type: str, y: np.ndarray, time, strata) -> np.ndarray | None:
@@ -141,14 +161,9 @@ class CyclopsData:
         model_type = model_type.strip().lower()
         y = _as_1d(y, "y")
 
-        if sp.issparse(X):
-            matrix = X.tocsc(copy=False)
-        else:
-            matrix = np.asarray(X)
-            if matrix.ndim == 1:
-                matrix = matrix.reshape(-1, 1)
-            if matrix.ndim != 2:
-                raise ValueError(f"X must be two-dimensional, got shape {matrix.shape}")
+        matrix = as_matrix(X)
+        if sp.issparse(matrix):
+            matrix = matrix.tocsc(copy=False)
 
         if matrix.shape[0] != y.shape[0]:
             raise ValueError(

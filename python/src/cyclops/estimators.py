@@ -17,7 +17,7 @@ from typing import ClassVar
 import numpy as np
 import scipy.sparse as sp
 
-from cyclops.data import INTERCEPT_ID, CyclopsData
+from cyclops.data import INTERCEPT_ID, CyclopsData, as_matrix
 from cyclops.model import Control, CyclopsModel, Prior
 
 __all__ = [
@@ -153,11 +153,15 @@ class BaseCyclopsEstimator:
 
         fit_intercept = self._resolve_fit_intercept()
 
+        # Coerce X up front: the feature count is needed before the data are
+        # built, and an array-like such as a list of lists has no `.shape`.
+        X = as_matrix(X)
+        n_features = X.shape[1]
+
         # Resolve the feature ids here rather than reading them back off the
         # stored columns: those also carry the intercept (id 0) and any promoted
         # offset (id -1), so `exclude` and `standard_errors` would silently
         # address the wrong column.
-        n_features = 1 if np.ndim(X) == 1 else X.shape[1]
         if covariate_ids is None:
             feature_ids = np.arange(1, n_features + 1, dtype=np.int64)
         else:
@@ -354,9 +358,9 @@ class BaseCyclopsEstimator:
             )
 
     def _check_features(self, X):
-        matrix = X.tocsr(copy=False) if sp.issparse(X) else np.asarray(X)
-        if matrix.ndim == 1:
-            matrix = matrix.reshape(-1, 1)
+        matrix = as_matrix(X)
+        if sp.issparse(matrix):
+            matrix = matrix.tocsr(copy=False)
         if matrix.shape[1] != self.n_features_in_:
             raise ValueError(
                 f"X has {matrix.shape[1]} features, but this "
