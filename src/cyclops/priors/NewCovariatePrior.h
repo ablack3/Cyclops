@@ -13,6 +13,7 @@
 #include <cmath>
 #include <sstream>
 #include <limits>
+#include <stdexcept>
 
 #include <iostream> // TODO Remove
 
@@ -179,13 +180,13 @@ static PriorPtr makePrior(PriorType priorType, PriorFunctionPtr& priorFunction,
         prior = bsccs::make_shared<NewLaplacePrior>(priorFunction, index);
         break;
     case NORMAL :
-        Rcpp::stop("Parameterized normal priors are not yet implemented");
+        throw std::runtime_error("Parameterized normal priors are not yet implemented");
         break;
     case BAR_UPDATE :
-        Rcpp::stop("Parameterized BAR updates are not yet implemented");
+        throw std::runtime_error("Parameterized BAR updates are not yet implemented");
         break;
     case JEFFREYS :
-        Rcpp::stop("Parameterized Jeffreys priors are not yet implemented");
+        throw std::runtime_error("Parameterized Jeffreys priors are not yet implemented");
         break;
     default : break;
     }
