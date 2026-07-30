@@ -55,7 +55,9 @@ def _summary(python_result):
         read("return_flag"),
         read("log_likelihood"),
         read("log_prior"),
-        read("iterations") if hasattr(python_result, "iterations") else python_result.n_iter_,
+        read("iterations")
+        if hasattr(python_result, "iterations")
+        else python_result.n_iter_,
     )
 
 

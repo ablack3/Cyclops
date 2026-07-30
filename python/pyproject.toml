@@ -58,6 +58,27 @@ build-type = "Release"
 # Tooling
 # ---------------------------------------------------------------------------
 
+[tool.ruff]
+line-length = 88
+target-version = "py39"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "SIM", "RUF", "NPY", "UP"]
+ignore = [
+    # `"_cyclops.ModelKind"` — the extension module has no runtime type objects
+    # to reference unquoted at class-definition time.
+    "UP037",
+    # __all__ is grouped by topic, which reads better than alphabetically.
+    "RUF022",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# The R bridge checks `returncode` itself so it can attach R's stderr.
+"tests/r_bridge.py" = ["PLW1510", "S603", "S607"]
+# conftest puts the tests directory on sys.path before importing from it.
+"tests/conftest.py" = ["E402"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [

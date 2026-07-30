@@ -208,7 +208,9 @@ def test_row_index_out_of_range_raises(small):
     data.set_outcome(small.y)
     with pytest.raises(CyclopsError, match="Row index out of range"):
         data.add_covariates_csc = None  # not the API under test
-        data._handle.add_covariates_csc([0, 1], [small.n_samples + 5], [1.0], [1], False)
+        data._handle.add_covariates_csc(
+            [0, 1], [small.n_samples + 5], [1.0], [1], False
+        )
 
 
 def test_unknown_model_type_raises(small):

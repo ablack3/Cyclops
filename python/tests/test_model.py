@@ -6,8 +6,7 @@ import numpy as np
 import pytest
 
 import cyclops
-from cyclops import Control, CyclopsData, CyclopsError, CyclopsModel, Prior
-from cyclops import _cyclops
+from cyclops import Control, CyclopsData, CyclopsError, CyclopsModel, Prior, _cyclops
 
 
 def _logistic(dataset, **kwargs):
@@ -339,7 +338,7 @@ def test_hessian_diagonal_is_negative_at_the_mode(small):
 
 
 def test_profile_curve_with_derivatives(small):
-    data, model = _logistic(small)
+    _, model = _logistic(small)
     result = model.fit()
     covariate = int(result.covariate_ids[1])
     estimate = result.coefficients[1]
@@ -409,5 +408,5 @@ def test_unknown_covariate_lookup_raises(small):
 
 
 def test_repr(small):
-    data, model = _logistic(small)
+    _, model = _logistic(small)
     assert "CyclopsModel(model_type='lr'" in repr(model)

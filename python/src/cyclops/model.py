@@ -9,8 +9,8 @@ likelihoods, per-covariate priors).
 from __future__ import annotations
 
 import time as _time
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Sequence
 
 import numpy as np
 
@@ -120,7 +120,9 @@ class Control:
 
     def _to_options(self) -> "_cyclops.FitOptions":
         if self.cv_search not in ("auto", "grid"):
-            raise ValueError(f"cv_search must be 'auto' or 'grid', got {self.cv_search!r}")
+            raise ValueError(
+                f"cv_search must be 'auto' or 'grid', got {self.cv_search!r}"
+            )
         if self.threads != -1 and self.threads < 1:
             raise ValueError("threads must be -1 or >= 1")
         if self.starting_variance != -1 and self.starting_variance <= 0:
@@ -129,7 +131,9 @@ class Control:
         options = _cyclops.FitOptions()
         options.max_iterations = int(self.max_iterations)
         options.tolerance = float(self.tolerance)
-        options.convergence = resolve(CONVERGENCE_KINDS, self.convergence, "convergence")
+        options.convergence = resolve(
+            CONVERGENCE_KINDS, self.convergence, "convergence"
+        )
         options.algorithm = resolve(ALGORITHM_KINDS, self.algorithm, "algorithm")
         options.initial_bound = float(self.initial_bound)
         options.max_bound_count = int(self.max_bound_count)
@@ -195,7 +199,8 @@ class FitResult:
 
     def __repr__(self) -> str:
         return (
-            f"FitResult(return_flag={self.return_flag!r}, iterations={self.iterations}, "
+            f"FitResult(return_flag={self.return_flag!r}, "
+            f"iterations={self.iterations}, "
             f"log_likelihood={self.log_likelihood:.6g}, "
             f"n_coefficients={len(self.coefficients)})"
         )

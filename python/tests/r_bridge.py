@@ -220,7 +220,9 @@ def _write_inputs(
 
 def _write_csv(path: Path, columns: dict[str, np.ndarray]) -> None:
     names = list(columns)
-    matrix = np.column_stack([np.asarray(columns[name], dtype=np.float64) for name in names])
+    matrix = np.column_stack(
+        [np.asarray(columns[name], dtype=np.float64) for name in names]
+    )
     with path.open("w") as handle:
         handle.write(",".join(names) + "\n")
         np.savetxt(handle, matrix, delimiter=",", fmt="%.17g")
@@ -325,7 +327,9 @@ def fit_in_r(
     payload = completed.stdout[completed.stdout.index("{") :]
     parsed = json.loads(payload)
     return RFit(
-        covariate_ids=np.array([int(float(i)) for i in _listify(parsed["covariate_ids"])]),
+        covariate_ids=np.array(
+            [int(float(i)) for i in _listify(parsed["covariate_ids"])]
+        ),
         coefficients=np.asarray(_listify(parsed["coefficients"]), dtype=np.float64),
         log_likelihood=float(parsed["log_likelihood"]),
         log_prior=float(parsed["log_prior"]),

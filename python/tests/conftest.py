@@ -12,19 +12,20 @@ import scipy.sparse as sp
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from r_bridge import r_cyclops_available  # noqa: E402
+from r_bridge import r_cyclops_available
 
 
 def pytest_collection_modifyitems(config, items):
     """Skip `parity` tests when R or the R Cyclops package is unavailable."""
-    if any(item.get_closest_marker("parity") for item in items):
-        if not r_cyclops_available():
-            skip = pytest.mark.skip(
-                reason="R with the Cyclops and jsonlite packages is required"
-            )
-            for item in items:
-                if item.get_closest_marker("parity"):
-                    item.add_marker(skip)
+    if any(item.get_closest_marker("parity") for item in items) and not (
+        r_cyclops_available()
+    ):
+        skip = pytest.mark.skip(
+            reason="R with the Cyclops and jsonlite packages is required"
+        )
+        for item in items:
+            if item.get_closest_marker("parity"):
+                item.add_marker(skip)
 
 
 @dataclass
@@ -104,7 +105,7 @@ def sparse_binary():
     columns = []
     for index in range(n_features):
         density = 0.15 if index < n_signal else 0.02
-        count = max(1, int(round(density * n_samples)))
+        count = max(1, round(density * n_samples))
         rows = rng.choice(n_samples, size=count, replace=False)
         column = np.zeros(n_samples)
         column[rows] = 1.0

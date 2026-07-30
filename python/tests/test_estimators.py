@@ -18,7 +18,6 @@ from cyclops import (
     SelfControlledCaseSeries,
 )
 
-
 # ---------------------------------------------------------------------------
 # Shape and protocol
 # ---------------------------------------------------------------------------
@@ -63,7 +62,7 @@ def test_get_and_set_params_round_trip():
 
 
 def test_clone_via_sklearn(small):
-    sklearn = pytest.importorskip("sklearn")
+    pytest.importorskip("sklearn")
     from sklearn.base import clone
 
     model = LogisticRegression(prior="normal", prior_variance=2.0)
@@ -151,7 +150,10 @@ def test_offset_is_excluded_from_standard_errors(small):
 def test_start_values_with_an_offset(small):
     """`start_values` is sized by feature count, not by stored column count."""
     model = PoissonRegression().fit(
-        small.X, small.counts, offset=small.offset, start_values=np.zeros(small.n_features)
+        small.X,
+        small.counts,
+        offset=small.offset,
+        start_values=np.zeros(small.n_features),
     )
     reference = PoissonRegression().fit(small.X, small.counts, offset=small.offset)
     np.testing.assert_allclose(model.coef_, reference.coef_, rtol=1e-4, atol=1e-6)
@@ -526,5 +528,8 @@ def test_linear_regression_recovers_least_squares(small):
     design = np.column_stack([np.ones(small.n_samples), small.X])
     expected, *_ = np.linalg.lstsq(design, small.continuous, rcond=None)
     np.testing.assert_allclose(
-        np.concatenate(([model.intercept_], model.coef_)), expected, rtol=1e-4, atol=1e-5
+        np.concatenate(([model.intercept_], model.coef_)),
+        expected,
+        rtol=1e-4,
+        atol=1e-5,
     )

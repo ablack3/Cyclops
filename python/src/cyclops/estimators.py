@@ -11,7 +11,8 @@ work; see ``docs/DESIGN_DECISIONS.md`` §6.
 from __future__ import annotations
 
 import inspect
-from typing import ClassVar, Sequence
+from collections.abc import Sequence
+from typing import ClassVar
 
 import numpy as np
 import scipy.sparse as sp

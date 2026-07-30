@@ -51,12 +51,12 @@ speculative.
 - [x] Row-ordering handled internally, permutation exposed as `row_order`
 - [x] Inference: standard errors, Fisher information, Hessian diagonal,
       likelihood-profile intervals and curves
-- [x] Type stubs (`_cyclops.pyi`)
+- [x] Type stubs (`_cyclops.pyi`) and a `ruff` configuration enforced in CI
 
 ### Phase 6 — Testing
 - [x] 31 R-parity tests across 10 model families, tolerances at ~1e-9/1e-10
-- [x] 125 unit tests covering data layout, estimator protocol, prediction links,
-      regularization, weights, validation and error paths
+- [x] 131 unit tests covering data layout, estimator protocol, prediction links,
+      regularization, weights, offset-column accounting, validation and error paths
 - [x] Verified the core changes leave R unaffected: `testthat` gives
       248 passed / 0 failed both before and after
 

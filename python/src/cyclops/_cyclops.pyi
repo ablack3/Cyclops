@@ -8,7 +8,7 @@ invisible at runtime and shows up only as a wrong type hint.
 from __future__ import annotations
 
 import enum
-from typing import Sequence
+from collections.abc import Sequence
 
 import numpy as np
 import numpy.typing as npt

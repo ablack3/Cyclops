@@ -8,7 +8,8 @@ and ``createPrior()``.
 
 from __future__ import annotations
 
-from typing import Mapping, TypeVar
+from collections.abc import Mapping
+from typing import TypeVar
 
 from cyclops import _cyclops
 
