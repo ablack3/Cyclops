@@ -11,6 +11,7 @@
 #include <float.h>
 //#include <math.h>
 #include <cmath>
+#include <limits>
 
 //#include <R_ext/Applic.h>
 
@@ -64,7 +65,7 @@ public:
 				return Coordinate(x1, obj1);
 			}
 			if (steps > 20) { // TODO Magic numbers are bad.
-			    return Coordinate(x1, 0.0 / 0.0);
+			    return Coordinate(x1, std::numeric_limits<double>::quiet_NaN());
 			}
 			++steps;
 			multiplier *= factor;

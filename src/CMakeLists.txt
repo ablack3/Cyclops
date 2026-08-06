@@ -130,6 +130,12 @@ set_target_properties(cyclops_core PROPERTIES
 if(MSVC)
     # The core relies on the conforming preprocessor and on <cmath> constants.
     target_compile_definitions(cyclops_core PUBLIC _USE_MATH_DEFINES NOMINMAX)
+    # /Zc:__cplusplus is required, not cosmetic: without it MSVC reports
+    # __cplusplus as 199711L regardless of /std:c++17, so Types.h compiles its
+    # C++98 make_unique emulation *as well as* pulling in std::make_unique
+    # through ADL -- every call site is then ambiguous. PUBLIC because that
+    # header is part of the interface.
+    target_compile_options(cyclops_core PUBLIC /Zc:__cplusplus)
     target_compile_options(cyclops_core PRIVATE /bigobj /EHsc)
 else()
     # -g1 mirrors src/Makevars.in: the templated kernels in engine/ generate
