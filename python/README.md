@@ -17,16 +17,15 @@ that scale, with cross-validated regularization built in.
 
 ## Install
 
-```bash
-pip install ohdsi-cyclops
-```
-
-Building from source needs a C++17 compiler and CMake ≥ 3.19:
+Not on PyPI yet — install from GitHub. This builds the C++ core, so it needs a
+C++17 compiler and takes a few minutes:
 
 ```bash
-git clone https://github.com/OHDSI/Cyclops.git
-pip install ./Cyclops/python
+pip install "git+https://github.com/ablack3/Cyclops.git@feature/python-api#subdirectory=python"
 ```
+
+[`INSTALL.md`](INSTALL.md) covers prerequisites, pinning a revision, editable
+installs, `uv`, build options and troubleshooting.
 
 ## Quick start
 
@@ -93,20 +92,28 @@ model.set_prior(Prior("laplace", variance=0.1))
 result = model.fit(FitOptions(max_iterations=2000, threads=4))
 ```
 
-## Testing against R
+## Testing
 
-The R package is the numerical ground truth. `tests/test_parity_with_r.py` fits
-the same datasets in both and compares coefficients, log likelihood, convergence
-flags and predictions:
+Two independent layers of validation:
+
+- **`tests/test_r_suite_port.py`** ports the R testthat suite's comparisons
+  against *external* gold standards — `glm`, `lm`, `coxph`, `clogit` and `gnm`.
+  These share no code with Cyclops, so they catch errors that Python-vs-R
+  agreement cannot. The expected values are pinned literals;
+  `tests/data/generate_fixtures.R` regenerates them.
+- **`tests/test_parity_with_r.py`** fits identical data through the R package and
+  compares coefficients, log likelihood, convergence flag, iteration count,
+  predictions and standard errors at ~1e-10.
 
 ```bash
 pip install -e ".[test]"
-pytest tests/                      # unit tests only
-pytest tests/ -m parity            # requires R with Cyclops installed
+pytest tests/ -m "not parity"      # no R required
+pytest tests/ -m parity            # needs R with Cyclops and jsonlite
 ```
 
 ## Documentation
 
+- [`INSTALL.md`](INSTALL.md) — installing from GitHub, build options, troubleshooting
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — Cyclops internals and the binding design
 - [`docs/DESIGN_DECISIONS.md`](docs/DESIGN_DECISIONS.md) — why pybind11, why a facade, API philosophy
 - [`docs/MIGRATION.md`](docs/MIGRATION.md) — every change made outside `python/`

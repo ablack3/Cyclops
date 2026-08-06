@@ -325,7 +325,14 @@ class CyclopsData:
         self._handle.make_dense([int(i) for i in covariate_ids])
 
     def normalize(self, kind: str = "stdev") -> np.ndarray:
-        """Scale covariates and return the divisors, in covariate-id order."""
+        """Rescale the dense and sparse covariates; return the factors applied.
+
+        Indicator, intercept and offset columns are left alone (their factor is
+        reported as 1.0). Columns are *multiplied* by the factor — ``1/sd`` for
+        ``"stdev"`` — so a coefficient fitted afterwards is returned to the
+        original scale by multiplying it by the same factor, as
+        ``coef(fit, rescale = TRUE)`` does in R.
+        """
         self._scale = self._handle.normalize(
             resolve(NORMALIZATION_KINDS, kind, "normalization")
         )
@@ -394,7 +401,7 @@ class CyclopsData:
 
     @property
     def scale(self) -> np.ndarray | None:
-        """Divisors from the last :meth:`normalize` call, if any."""
+        """Factors from the last :meth:`normalize` call, if any."""
         return self._scale
 
     @property
@@ -408,7 +415,11 @@ class CyclopsData:
         )
 
     def column_sum(self, covariate_id: int, power: int = 1) -> float:
-        """Sum of ``x**power`` over a column; ``covariate_id=-1`` is the outcome."""
+        """Sum of ``x**power`` over one covariate column.
+
+        Raises for an unknown id. The outcome is not reducible this way; read it
+        from :attr:`y`.
+        """
         return self._handle.column_sum(int(covariate_id), power)
 
     def sum_by_stratum(self, covariate_id: int, power: int = 1) -> np.ndarray:

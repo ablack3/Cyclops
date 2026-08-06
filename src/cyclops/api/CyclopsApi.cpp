@@ -533,6 +533,7 @@ struct Model::Impl {
     }
 
     void applyPrior();
+    void checkJeffreysIsApplicable() const;
     void applyOptions();
     void applyInterceptWarmStart();
     FitResult collectResult(double fitSeconds);
@@ -564,6 +565,12 @@ void Model::Impl::applyPrior() {
         }
     }
 
+    const bool anyJeffreys =
+        prior.kind == PriorKind::Jeffreys ||
+        std::find(prior.kinds.begin(), prior.kinds.end(), PriorKind::Jeffreys) !=
+            prior.kinds.end();
+    if (anyJeffreys) checkJeffreysIsApplicable();
+
     JointPriorPtr jointPrior;
     if (perCovariate) {
         auto first = CovariatePrior::makePrior(toPriorType(prior.kinds[0]),
@@ -593,6 +600,29 @@ void Model::Impl::applyPrior() {
     }
 
     ccd().setPrior(jointPrior);
+}
+
+void Model::Impl::checkJeffreysIsApplicable() const {
+    // The Jeffreys prior is only implemented for a single binary covariate.
+    // fitCyclopsModel() enforces this in R before reaching the optimizer;
+    // without the same guard the C++ silently produces an undefined result.
+    if (raw().getNumberOfCovariates() > 1) {
+        throw CyclopsError(
+            "Jeffreys prior is currently only implemented for 1 covariate");
+    }
+
+    const std::size_t index = betaOffset();
+    if (raw().getColumnType(index) == bsccs::INDICATOR) return;
+
+    const auto covariateId = raw().getColumnNumericalLabel(index);
+    const double count = raw().sum(covariateId, 0);
+    const double total = raw().sum(covariateId, 1);
+    const double mean = (count > 0.0) ? total / count : 0.0;
+    if (mean != 0.0 && mean != 1.0) {
+        throw CyclopsError(
+            "Jeffreys prior is currently only implemented for indicator "
+            "covariates");
+    }
 }
 
 void Model::Impl::applyOptions() {
@@ -916,12 +946,28 @@ std::vector<double> Model::standard_errors(
     std::vector<bsccs::IdType> asIds(indices.begin(), indices.end());
     const auto information = impl_->ccd().computeFisherInformation(asIds);
 
-    // Matches R's `sqrt(diag(solve(fisherInformation)))`.
-    const Eigen::MatrixXd covariance = information.inverse();
+    // Matches R's `sqrt(diag(solve(fisherInformation)))`, but reports a singular
+    // information matrix rather than propagating inf/NaN. R surfaces the same
+    // condition as a LAPACK error out of solve(); silently returning NaN would
+    // let a caller treat a degenerate fit as if it had standard errors.
+    const Eigen::FullPivLU<Eigen::MatrixXd> decomposition(information);
+    if (!decomposition.isInvertible()) {
+        throw CyclopsError(
+            "Fisher information matrix is singular, so no asymptotic standard "
+            "errors exist. This is expected when a coefficient is unidentified "
+            "or its estimate has run to infinity.");
+    }
+
+    const Eigen::MatrixXd covariance = decomposition.inverse();
     std::vector<double> result;
     result.reserve(indices.size());
     for (Eigen::Index i = 0; i < covariance.rows(); ++i) {
-        result.push_back(std::sqrt(covariance(i, i)));
+        const double variance = covariance(i, i);
+        if (!(variance >= 0.0)) {   // also catches NaN
+            throw CyclopsError(
+                "Asymptotic variance is not positive; the fit is degenerate.");
+        }
+        result.push_back(std::sqrt(variance));
     }
     return result;
 }

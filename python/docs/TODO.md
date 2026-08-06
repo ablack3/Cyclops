@@ -55,7 +55,10 @@ speculative.
 
 ### Phase 6 — Testing
 - [x] 31 R-parity tests across 10 model families, tolerances at ~1e-9/1e-10
-- [x] 131 unit tests covering data layout, estimator protocol, prediction links,
+- [x] 43 ported R-suite tests asserting against the *external* gold standards
+      (`glm`, `lm`, `coxph`, `clogit`, `gnm`), so validation does not depend on
+      Cyclops being right about itself
+- [x] 147 unit tests covering data layout, estimator protocol, prediction links,
       regularization, weights, offset-column accounting, validation and error paths
 - [x] Verified the core changes leave R unaffected: `testthat` gives
       248 passed / 0 failed both before and after
@@ -118,6 +121,11 @@ speculative.
 - [ ] **Fine-Gray censoring weights.** `FineGrayRegression` requires
       `censor_weights=` from the caller; port `getFineGrayWeights()` so it can be
       derived from `(time, event)` as R does.
+- [ ] **Cox standard errors.** `computeFisherInformation` gives a singular matrix
+      for the Cox likelihood, so `standard_errors()` raises for every Cox fit
+      (`MIGRATION.md`, observation 6). Broken in R too, but it is the one piece of
+      inference a Cox user expects. Likelihood-profile intervals do work and are
+      the current substitute.
 - [ ] **Schoenfeld residuals / proportionality test.**
       `getSchoenfeldResiduals` and `cyclopsTestProportionality` are unexposed —
       the standard Cox diagnostics.
@@ -206,6 +214,8 @@ In recommended order (see `MIGRATION.md` for the full write-up of each):
    `time`, the undocumented `stratumId`-on-covariates requirement, the
    `OBJECTS.threads` typo, the `removeIntercept` disagreement, the ignored
    `takeLog` parameter, and the MM monotonicity assertion.
-4. **Propose `src/CMakeLists.txt`** as a standalone library target.
-5. **Propose `src/cyclops/api/`** as a reusable non-R interface, framed around
+4. **Move the Jeffreys-prior preconditions into the core** so every binding
+   inherits them instead of each reimplementing R's checks.
+5. **Propose `src/CMakeLists.txt`** as a standalone library target.
+6. **Propose `src/cyclops/api/`** as a reusable non-R interface, framed around
    the JNI and CLI duplication it removes.

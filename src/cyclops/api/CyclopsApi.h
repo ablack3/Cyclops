@@ -245,7 +245,14 @@ public:
     /// Convert the named covariates to dense storage.
     void make_dense(const std::vector<std::int64_t>& covariate_ids);
 
-    /// Scale every non-intercept, non-offset covariate; returns the divisors.
+    /// Rescale every DENSE and SPARSE covariate (INDICATOR, INTERCEPT and
+    /// offset columns are left alone) and return the factor applied to each,
+    /// in stored column order.
+    ///
+    /// Columns are *multiplied* by the returned factor — `1/sd` for
+    /// `StandardDeviation`, and so on — so a coefficient fitted afterwards is
+    /// returned to the original scale by multiplying it by the same factor.
+    /// This matches `coef(fit, rescale = TRUE)` in R.
     std::vector<double> normalize(NormalizationKind kind);
 
     void finalize();
@@ -275,7 +282,8 @@ public:
     std::vector<double> univariable_correlation(
         const std::vector<std::int64_t>& ids = {}) const;
 
-    /// Sum of `x^power` over a covariate column (`covariate_id == -1` ⇒ outcome).
+    /// Sum of `x^power` over a covariate column. Throws for an unknown id;
+    /// there is no way to reduce over the outcome, which `outcome()` returns.
     double column_sum(std::int64_t covariate_id, int power = 1) const;
 
     /// Per-stratum sums of `x^power`.

@@ -263,7 +263,34 @@ Python bindings, so all were left alone to keep the diff minimal.
    (`RcppModelData.cpp:549`). The dead parameter invites exactly the
    double-logging bug it looks like it prevents.
 
-6. **MM raises `"Non-increasing!"` at tight tolerances.** The monotonicity
+6. **Cox models cannot produce asymptotic standard errors.**
+   `CyclicCoordinateDescent::computeFisherInformation` returns a singular matrix
+   for the Cox likelihood, so `getSEs()` fails in R with a LAPACK error:
+
+   ```r
+   test <- data.frame(length = c(4, 3.5, 3, 2.5, 2, 1.5, 1),
+                      event  = c(1, 1, 0, 1, 1, 0, 1),
+                      x1 = c(0, 2, 0, 0, 1, 1, 1), x2 = c(0, 0, 1, 1, 1, 0, 0))
+   fit <- fitCyclopsModel(createCyclopsData(Surv(length, event) ~ x1 + x2,
+                                            data = test, modelType = "cox"))
+   Cyclops:::getSEs(fit, c(1, 2))
+   #  Error: Lapack routine dgesv: system is exactly singular
+   ```
+
+   The coefficients are correct — they match `coxph` to 1e-10 — so only the
+   curvature is affected. The R suite never compares Cox standard errors against
+   `coxph`, which is consistent with the limitation being known. The facade
+   raises a `CyclopsError` naming the cause rather than returning the `inf`/`NaN`
+   that inverting a singular matrix produces.
+
+7. **The Jeffreys-prior preconditions are enforced only in R.**
+   `fitCyclopsModel` rejects a Jeffreys prior with more than one covariate, or
+   with a non-binary covariate, before reaching the optimizer
+   (`R/ModelFit.R:169-183`). Nothing in C++ checks either, so any other binding
+   silently produces an undefined result. The facade reproduces both checks; they
+   would be better placed in the core so every front-end inherits them.
+
+8. **MM raises `"Non-increasing!"` at tight tolerances.** The monotonicity
    assertion in `CyclicCoordinateDescent.cpp:1241` fires on floating-point noise
    near the optimum, so `algorithm = "mm"` with `tolerance` much below `1e-6`
    aborts a fit that has effectively converged. A relative epsilon would be more
