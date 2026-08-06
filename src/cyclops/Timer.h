@@ -8,12 +8,14 @@
 #ifndef TIMER_H_
 #define TIMER_H_
 
-// #ifndef _MSC_VER
-#include <sys/time.h> // was just 'time.h'
-// #endif
+#include "Timing.h"
 
 namespace bsccs {
 
+// Elapsed wall-clock seconds since construction.
+//
+// Previously built on gettimeofday() and <sys/time.h>, which MSVC does not
+// provide. bsccs::chrono is portable and monotonic.
 class Timer {
 public:
 	Timer();
@@ -23,9 +25,7 @@ public:
 	virtual ~Timer();
 
 private:
-	double calculateSeconds(const timeval &time1, const timeval &time2);
-
-	struct timeval time1;
+	bsccs::chrono::steady_clock::time_point time1;
 };
 
 } /* namespace bsccs */

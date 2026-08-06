@@ -4,17 +4,17 @@ Every modification to files the R package shares, with rationale, alternatives
 considered, and an upstream recommendation. The goal is that a future
 `git merge upstream/main` touches none of these except by coincidence.
 
-Summary: **4 changes, 3 files edited, 2 files added.** All are Rcpp-free,
+Summary: **5 changes, 7 files edited, 2 files added.** All are Rcpp-free,
 Python-free, and additive or bug-fixing. None changes numerical results for
-existing R code paths except change 3, which replaces reads of uninitialized
-memory.
+existing R code paths.
 
 | # | Path | Kind | Upstream PR? |
 |---|---|---|---|
 | 1 | `src/cyclops/priors/NewCovariatePrior.h` | fix: remove hidden Rcpp dependency | **Yes** — standalone |
 | 2 | `src/cyclops/ModelData.h`, `src/cyclops/ModelData.cpp` | fix: out-of-bounds read on unstratified data | **Yes** — standalone |
-| 3 | `src/cyclops/api/` (new) | feature: language-neutral C++ facade | **Yes** — after the fixes land |
-| 4 | `src/CMakeLists.txt` (new) | build: standalone CMake target | **Yes** — with or after 3 |
+| 3 | `src/cyclops/CcdInterface.{h,cpp}`, `src/cyclops/Timer.{h,cpp}` | fix: POSIX-only timing breaks the MSVC build | **Yes** — standalone |
+| 4 | `src/cyclops/api/` (new) | feature: language-neutral C++ facade | **Yes** — after the fixes land |
+| 5 | `src/CMakeLists.txt` (new) | build: standalone CMake target | **Yes** — with or after 4 |
 
 Nothing in `R/`, `src/Rcpp*`, `src/Makevars*`, `DESCRIPTION`, `NAMESPACE`,
 `configure`, or `tests/testthat/` was touched.
@@ -141,7 +141,82 @@ Worth pairing with a `testthat` case that compares the MM fit from
 
 ---
 
-## 3. `src/cyclops/api/` — the language-neutral C++ facade (new files)
+## 3. Timing — replace `gettimeofday` with `std::chrono`
+
+**Change.** `CcdInterface` and `Timer` measured elapsed time with
+`gettimeofday()` and `struct timeval`. Both now use `bsccs::chrono`, the
+codebase's own `<chrono>` wrapper in `src/cyclops/Timing.h`, which
+`RcppCyclopsInterface.cpp` and `engine/ModelSpecifics.hpp` already use.
+
+```diff
+-	struct timeval time1, time2;
+-	gettimeofday(&time1, NULL);
++	const auto time1 = now();
+ 	...
+-	gettimeofday(&time2, NULL);
++	const auto time2 = now();
+ 	return calculateSeconds(time1, time2);
+```
+
+`calculateSeconds` keeps its name and role; its parameters become
+`CcdInterface::TimePoint`. The 63-line MSVC block in `CcdInterface.cpp` is
+deleted.
+
+**Why it was needed.** The core does not compile with MSVC. Building the
+extension on `windows-latest` fails with:
+
+```
+src\cyclops\CcdInterface.cpp(119,4): error C2027: use of undefined type 'bsccs::timeval'
+```
+
+Three separate defects combine:
+
+1. `CcdInterface.h` declares `calculateSeconds(const struct timeval&, ...)`
+   without including any header that defines `timeval`. In C++ that
+   elaborated-type-specifier *declares* `bsccs::timeval` as a new incomplete
+   type, so the error surfaces at the call site rather than the declaration.
+   The header did once include `<sys/time.h>` / `<winsock.h>`, but the whole
+   block is commented out.
+2. `Timer.h` includes `<sys/time.h>` unconditionally, which MSVC does not ship.
+3. The `#ifdef _MSC_VER` shim in `CcdInterface.cpp` that supplies
+   `gettimeofday` references `FILETIME` and `GetSystemTimeAsFileTime` without
+   including `<windows.h>`, and never declares `timeval` — so it could not have
+   compiled either. It is dead code.
+
+None of this affects R, because R on Windows builds with MinGW (Rtools), where
+`_MSC_VER` is undefined and `<sys/time.h>` and `gettimeofday` both exist. The
+MSVC path has therefore never been exercised — which is why an incomplete shim
+survived in the tree.
+
+**Behaviour for R users: unchanged apart from the clock.** The reported
+durations (`timeLoad`, `timeFit`, `timeUpdate`) now come from a monotonic
+`steady_clock` instead of wall-clock `gettimeofday`, which is what measuring an
+interval wants: immune to NTP steps and clock adjustments. No coefficient, log
+likelihood, or convergence result depends on these values. Verified: `testthat`
+gives 248 passed / 0 failed before and after.
+
+**Alternatives considered.**
+
+- *Include `<winsock2.h>` under `_MSC_VER` and repair the shim.* The smallest
+  diff, and it restores what the commented-out block intended. Rejected because
+  `<winsock2.h>` is order-sensitive with `<windows.h>`, the shim would still need
+  `<windows.h>` added, and the result could only be validated by pushing to CI
+  and waiting — whereas the `<chrono>` version compiles everywhere and is
+  verifiable locally.
+- *Build the Windows wheels with MinGW*, matching R. Mixing a MinGW-built
+  extension with an MSVC-built CPython is a known source of ABI trouble; MSVC is
+  the convention for Windows wheels.
+- *Leave the core alone and stub the timings out of the facade.* The facade does
+  not call `gettimeofday`; `CcdInterface.cpp` does, and it is compiled either
+  way.
+
+**Upstream recommendation: submit as a standalone PR.** It deletes 63 lines of
+unreachable platform code, makes two headers self-contained, and lets the core
+build with MSVC for the first time. Independent of the Python work.
+
+---
+
+## 4. `src/cyclops/api/` — the language-neutral C++ facade (new files)
 
 **Change.** Two new files, no existing file modified:
 
@@ -173,7 +248,7 @@ passes unchanged.
 textually. The only coupling is to the `bsccs` APIs the facade calls; if upstream
 changes one of those, the facade needs the same edit any other caller would.
 
-**Upstream recommendation: propose after changes 1 and 2 land.** Frame it as
+**Upstream recommendation: propose after changes 1-3 land.** Frame it as
 "reusable non-R interface" rather than "Python support" — the value to OHDSI is
 that the JNI layer and CLI stop duplicating orchestration logic, and that a
 Python/Julia/Rust binding becomes a mechanical exercise. Expect discussion about
@@ -181,7 +256,7 @@ API scope; the header is deliberately small so that conversation is tractable.
 
 ---
 
-## 4. `src/CMakeLists.txt` — standalone library target (new file)
+## 5. `src/CMakeLists.txt` — standalone library target (new file)
 
 **Change.** A new `src/CMakeLists.txt` defining `cyclops::core`: a static library
 built from the source list in `src/Makevars.in` plus `src/cyclops/api`, with
@@ -210,7 +285,7 @@ orthogonal and can be consumed via `add_subdirectory` today.
   `find_package(Eigen3)` with a pinned `FetchContent` fallback keeps wheel builds
   reproducible without adding another copy of Eigen to the tree.
 
-**Upstream recommendation: submit with or just after change 3.** Purely additive;
+**Upstream recommendation: submit with or just after change 4.** Purely additive;
 `R CMD INSTALL` never invokes CMake. A natural follow-up is to have
 `standalone/` consume the same target, which would delete most of
 `standalone/codebase/CCD-DP/CMakeLists.txt`.
