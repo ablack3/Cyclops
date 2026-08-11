@@ -393,6 +393,14 @@ void ModelData::add_intercept() {
     if (impl_->data->getHasInterceptCovariate()) {
         throw CyclopsError("Model data already has an intercept");
     }
+    // addIntercept() inserts at column 0. A promoted offset must stay there --
+    // every index derived from getHasOffsetCovariate() assumes it, so inserting
+    // ahead of it would silently report the offset's fixed coefficient in place
+    // of the intercept.
+    if (impl_->data->getHasOffsetCovariate()) {
+        throw CyclopsError("Add the intercept before promoting the offset "
+                           "covariate: the offset must occupy column 0");
+    }
     impl_->data->addIntercept();
 }
 
@@ -583,6 +591,14 @@ void Model::Impl::applyPrior() {
                 CovariatePrior::makePrior(toPriorType(prior.kinds[i]),
                                           prior.variances[i]),
                 static_cast<int>(i));
+        }
+        // The exclusion set still applies. R reaches its per-column branch only
+        // when the exclusion list is empty and silently uses baseVariance[0]
+        // otherwise; honouring both here keeps `exclude` and the automatic
+        // intercept exclusion meaningful whichever prior form was used.
+        auto noPrior = bsccs::make_shared<NoPrior>();
+        for (const auto id : exclude) {
+            mixture->changePrior(noPrior, static_cast<int>(columnIndexOf(id)));
         }
         jointPrior = mixture;
     } else if (exclude.empty()) {
@@ -857,17 +873,27 @@ FitResult Model::fit() {
     auto result = impl_->collectResult(seconds);
 
     // fitCyclopsModel() retries a failed Bayesian-logistic-regression step under
-    // the Lange criterion before giving up.
+    // the Lange criterion before giving up. R does this by recursing with a
+    // modified *local* control, so the caller's configuration is untouched
+    // afterwards; restore it here for the same reason -- otherwise a second
+    // fit() on this object would silently keep using Lange.
     if (impl_->options.retry_on_poor_blr_step &&
         result.return_flag == "POOR_BLR_STEP" &&
         impl_->options.convergence == ConvergenceKind::Gradient) {
-        auto retryOptions = impl_->options;
+        const auto callerOptions = impl_->options;
+        auto retryOptions = callerOptions;
         retryOptions.convergence = ConvergenceKind::Lange;
         set_options(retryOptions);
-        seconds = impl_->prior.use_cross_validation
-            ? impl_->interface->crossValidate()
-            : impl_->interface->fit();
-        result = impl_->collectResult(seconds);
+        try {
+            seconds = impl_->prior.use_cross_validation
+                ? impl_->interface->crossValidate()
+                : impl_->interface->fit();
+            result = impl_->collectResult(seconds);
+        } catch (...) {
+            set_options(callerOptions);
+            throw;
+        }
+        set_options(callerOptions);
     }
 
     return result;

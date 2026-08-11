@@ -135,7 +135,11 @@ struct FitOptions {
     // -- runtime --
     NoiseLevel noise = NoiseLevel::Silent;
     int threads = 1;
-    long seed = 0;   ///< 0 ⇒ the binding should substitute a time-based seed
+    /// Cross-validation fold seed. `CCDArguments::seed` is a `long`, which is
+    /// 32-bit on Windows, so callers must keep this inside the signed 32-bit
+    /// range for a given seed to select the same folds on every platform.
+    /// 0 ⇒ the binding should substitute a time-based seed.
+    long seed = 0;
     bool reset_coefficients = false;
 
     /// Reproduce `fitCyclopsModel()`'s behaviour of retrying with the Lange

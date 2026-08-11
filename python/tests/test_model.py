@@ -7,6 +7,7 @@ import pytest
 
 import cyclops
 from cyclops import Control, CyclopsData, CyclopsError, CyclopsModel, Prior, _cyclops
+from cyclops.data import INTERCEPT_ID
 
 
 def _logistic(dataset, **kwargs):
@@ -410,3 +411,141 @@ def test_unknown_covariate_lookup_raises(small):
 def test_repr(small):
     _, model = _logistic(small)
     assert "CyclopsModel(model_type='lr'" in repr(model)
+
+
+# ---------------------------------------------------------------------------
+# Regressions from the code review
+# ---------------------------------------------------------------------------
+
+
+def test_poor_blr_retry_does_not_rewrite_the_caller_options(small):
+    """The Lange retry must be scoped to the fit() that needed it.
+
+    R recurses with a modified *local* control, so the caller's configuration
+    survives. Leaving the model on Lange made a second fit() reach a different
+    coefficient than a fresh model with identical stated options.
+    """
+    # A Jeffreys prior on a treatment-separated Cox arm trips POOR_BLR_STEP under
+    # the gradient criterion (the R suite's test-finiteMLE.R case).
+    rng = np.random.default_rng(123)
+    n = 1000
+    censor = rng.exponential(100.0, n)
+    exposed = rng.random(n) < 0.5
+    event_time = np.full(n, np.inf)
+    event_time[~exposed] = rng.exponential(100.0, int((~exposed).sum()))
+    time = np.minimum(censor, event_time)
+    outcome = (event_time < censor).astype(float)
+    X = exposed.astype(float).reshape(-1, 1)
+
+    def build():
+        data = CyclopsData.from_arrays(X, outcome, "cox", time=time)
+        return CyclopsModel(
+            data,
+            prior=Prior(kind="jeffreys"),
+            control=Control(convergence="gradient", max_iterations=100),
+        )
+
+    model = build()
+    first = model.fit()
+    fresh = build().fit()
+
+    # The retry ran, so the flag is no longer POOR_BLR_STEP...
+    assert first.return_flag == "SUCCESS"
+    # ...and a pristine model with the same options agrees.
+    np.testing.assert_allclose(
+        first.coefficients, fresh.coefficients, rtol=1e-10, atol=1e-12
+    )
+    assert first.iterations == fresh.iterations
+    # The caller's criterion is still in force for anything that follows.
+    assert model.control.convergence == "gradient"
+
+
+def test_per_covariate_priors_still_honour_exclusions(small):
+    """`exclude` and the automatic intercept exclusion apply to both prior forms."""
+    data = CyclopsData.from_arrays(
+        small.X, small.y, "lr", add_intercept=True
+    )
+    model = CyclopsModel(data)
+    n = data.n_covariates
+    ids = data.covariate_ids
+
+    model.set_prior(
+        Prior(
+            kind="laplace",
+            kinds=["laplace"] * n,
+            variances=[1e-4] * n,
+            exclude=[int(ids[2])],
+        )
+    )
+    regularized = model.is_regularized()
+    assert not regularized[0], "intercept must stay unpenalized by default"
+    assert not regularized[2], "explicitly excluded covariate must be unpenalized"
+    assert regularized[1] and regularized[3], "the rest must be penalized"
+
+
+def test_per_covariate_priors_can_force_the_intercept(small):
+    data = CyclopsData.from_arrays(small.X, small.y, "lr", add_intercept=True)
+    model = CyclopsModel(data)
+    n = data.n_covariates
+    model.set_prior(
+        Prior(
+            kind="laplace",
+            kinds=["laplace"] * n,
+            variances=[1e-4] * n,
+            force_intercept=True,
+        )
+    )
+    assert all(model.is_regularized())
+
+
+def test_intercept_after_offset_is_rejected(small):
+    """The offset must stay at column 0; inserting ahead of it corrupts indexing."""
+    reserved = -(2**63)
+
+    def build(intercept_first: bool):
+        data = CyclopsData.create("pr")
+        data.set_outcome(small.counts)
+        data.add_dense_covariate(reserved, small.offset)
+        data.add_covariates(small.X, covariate_ids=np.arange(1, small.n_features + 1))
+        if intercept_first:
+            data.add_intercept()
+            data.set_offset(reserved)
+        else:
+            data.set_offset(reserved)
+            data.add_intercept()
+        return data
+
+    good = build(intercept_first=True)
+    assert good.covariate_ids[0] == -1        # offset
+    assert good.intercept_label == INTERCEPT_ID
+
+    with pytest.raises(CyclopsError, match="before promoting the offset"):
+        build(intercept_first=False)
+
+
+@pytest.mark.parametrize(
+    "seed,expected",
+    [(0, 0), (42, 42), (2**31 - 2, 2**31 - 2), (-1, -1), (-99, -99)],
+)
+def test_seed_passthrough_in_the_portable_range(small, seed, expected):
+    from cyclops.model import _portable_seed
+
+    assert _portable_seed(seed) == expected
+
+
+def test_large_seed_is_folded_into_the_portable_range(small):
+    """`long` is 32-bit on Windows, so a wide seed must be narrowed here.
+
+    Otherwise the same random_state either overflows the binding or narrows
+    differently per platform, and cross-validation picks different folds.
+    """
+    from cyclops.model import _portable_seed
+
+    for seed in (2**40, -(2**40), 2**63 - 1):
+        folded = _portable_seed(seed)
+        assert 0 <= folded < 2**31 - 1, folded
+
+    # And it must actually reach the optimizer without raising on any platform.
+    data = CyclopsData.from_arrays(small.X, small.y, "lr", add_intercept=True)
+    model = CyclopsModel(data, control=Control(seed=2**40))
+    assert model.fit().return_flag == "SUCCESS"

@@ -29,6 +29,25 @@ __all__ = ["Prior", "Control", "FitResult", "CyclopsModel", "CyclopsError"]
 
 CyclopsError = _cyclops.CyclopsError
 
+#: Cyclops reserves two seed values: -1 means "deterministic, do not shuffle" and
+#: -99 means "seed from the wall clock" (see drivers/AbstractSelector.cpp).
+_RESERVED_SEEDS = (-1, -99)
+
+_SEED_MODULUS = 2**31 - 1
+
+
+def _portable_seed(value: int) -> int:
+    """Fold ``value`` into the range every platform's C ``long`` can hold.
+
+    Keeps the two values Cyclops treats as sentinels intact, and maps everything
+    else into ``[0, 2**31 - 2]`` so the same ``random_state`` produces the same
+    cross-validation folds on 32-bit-``long`` platforms (Windows) as on 64-bit
+    ones.
+    """
+    if value in _RESERVED_SEEDS:
+        return value
+    return abs(value) % _SEED_MODULUS
+
 
 @dataclass
 class Prior:
@@ -155,7 +174,12 @@ class Control:
         options.threads = int(self.threads)
         # R substitutes `as.integer(Sys.time())`; do the same so an unset seed
         # still varies between runs of a cross-validated fit.
-        options.seed = int(_time.time()) if self.seed is None else int(self.seed)
+        raw_seed = int(_time.time()) if self.seed is None else int(self.seed)
+        # CCDArguments::seed is a C `long`, which is 32-bit on Windows and
+        # 64-bit elsewhere. Fold it into the signed 32-bit range here so a given
+        # random_state selects the same folds on every platform, rather than
+        # overflowing the binding on Windows and narrowing silently in the core.
+        options.seed = _portable_seed(raw_seed)
         options.reset_coefficients = bool(self.reset_coefficients)
         options.retry_on_poor_blr_step = bool(self.retry_on_poor_blr_step)
         return options
