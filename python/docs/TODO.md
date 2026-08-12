@@ -75,6 +75,13 @@ speculative.
 
 ### P0 — before this is usable by anyone else
 
+- [ ] **Widen the wheel matrix.** The wheels job builds manylinux + musllinux
+      x86_64, macOS x86_64 + arm64, and Windows AMD64. Deliberately excluded:
+      `linux/aarch64` (needs `docker/setup-qemu-action`, and emulated builds of
+      these templated kernels take tens of minutes each -- belongs in a release
+      workflow, not every push) and `win32` (SciPy has published no 32-bit
+      Windows wheel since 1.9.1, so the test step cannot install our own
+      dependencies there).
 - [ ] **Build and test on Linux and Windows.** Only macOS/arm64 + CPython 3.14
       has actually been exercised. The CI workflow exists but has never run.
       Windows is the real risk: `Thread.h` switches to TinyThread there, MSVC

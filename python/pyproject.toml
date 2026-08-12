@@ -88,14 +88,34 @@ markers = [
 
 [tool.cibuildwheel]
 build = "cp39-* cp310-* cp311-* cp312-* cp313-*"
-skip = "*-musllinux_i686 pp*"
+# PyPy has no NumPy/SciPy wheels for our floors, so the test step could never
+# install this package's own dependencies there.
+skip = "pp*"
 test-extras = ["test"]
-test-command = "pytest {project}/tests -m 'not parity'"
+# {package} is the package directory (python/). {project} is the *repository*
+# root, whose tests/ holds the R testthat suite -- pointing pytest there
+# collects zero tests and exits 5.
+test-command = 'pytest {package}/tests -m "not parity"'
 build-verbosity = 1
+
+[tool.cibuildwheel.linux]
+# x86_64 covers manylinux and musllinux, both of which have NumPy/SciPy wheels
+# for every Python in `build`. aarch64 would need QEMU emulation
+# (docker/setup-qemu-action) and takes tens of minutes per wheel for these
+# templated kernels, so it belongs in a release workflow rather than every push.
+archs = ["x86_64"]
 
 [tool.cibuildwheel.macos]
 archs = ["x86_64", "arm64"]
-environment = { MACOSX_DEPLOYMENT_TARGET = "10.15" }
 
-[tool.cibuildwheel.linux]
-archs = ["x86_64", "aarch64"]
+[tool.cibuildwheel.windows]
+# AMD64 only. cibuildwheel's `auto` also builds win32, where the test step
+# cannot succeed: SciPy has published no 32-bit Windows wheel since 1.9.1, so
+# `scipy>=1.8` resolves to a version that must be built from source.
+archs = ["AMD64"]
+
+[[tool.cibuildwheel.overrides]]
+# arm64 has its own 11.0 floor; only the x86_64 target needs stating, and
+# setting it globally would understate the arm64 wheel's minimum.
+select = "*-macosx_x86_64"
+environment = { MACOSX_DEPLOYMENT_TARGET = "10.13" }
