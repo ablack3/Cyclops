@@ -99,11 +99,23 @@ test-command = 'pytest {package}/tests -m "not parity"'
 build-verbosity = 1
 
 [tool.cibuildwheel.linux]
-# x86_64 covers manylinux and musllinux, both of which have NumPy/SciPy wheels
-# for every Python in `build`. aarch64 would need QEMU emulation
+# x86_64 covers manylinux and musllinux. aarch64 would need QEMU emulation
 # (docker/setup-qemu-action) and takes tens of minutes per wheel for these
 # templated kernels, so it belongs in a release workflow rather than every push.
 archs = ["x86_64"]
+
+# Build against glibc 2.28, not cibuildwheel's manylinux2014 (glibc 2.17)
+# default. For CPython 3.11 and newer the current NumPy and SciPy releases ship
+# manylinux_2_28 wheels *only*; pip resolves to the highest version and then
+# falls back to that version's sdist rather than downgrading to one with a
+# manylinux_2_17 wheel, so the test step tried to compile SciPy from source and
+# died on a missing OpenBLAS. Older manylinux_2_17 wheels (all that exists for
+# cp39) still install here, since glibc is backward compatible.
+#
+# The resulting wheels require glibc >= 2.28, which is the floor NumPy and SciPy
+# already impose -- claiming 2_17 while our dependencies need 2_28 would have
+# been the less honest tag.
+manylinux-x86_64-image = "manylinux_2_28"
 
 [tool.cibuildwheel.macos]
 archs = ["x86_64", "arm64"]
